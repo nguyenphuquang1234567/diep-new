@@ -644,7 +644,7 @@ function sendInput() {
         socket.emit('playerInput', { color: myColor, input: { ...localInput } });
     }
 }
-setInterval(sendInput, 1000/40); // 40 times per second
+setInterval(sendInput, 1000/30); // 30 times per second
 
 // Receive remote input from server (by color)
 if (socket) {
