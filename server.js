@@ -12,6 +12,7 @@ app.use(express.static(__dirname));
 // Game state
 let players = {};
 let lastState = null;
+let hostId = null;
 
 io.on('connection', (socket) => {
     // Assign player color
@@ -20,24 +21,43 @@ io.on('connection', (socket) => {
     socket.emit('playerColor', color);
     console.log(`Player ${color} connected: ${socket.id}`);
 
-    // Receive player input
-    socket.on('playerInput', (input) => {
-        if (players[socket.id]) {
-            players[socket.id].inputs = input;
+    // Assign host if not set
+    if (!hostId) {
+        hostId = socket.id;
+        io.emit('hostId', hostId);
+        console.log(`Host assigned: ${hostId}`);
+    } else {
+        socket.emit('hostId', hostId);
+    }
+
+    // Relay input from viewers to host
+    socket.on('playerInput', (data) => {
+        if (socket.id !== hostId && hostId) {
+            io.to(hostId).emit('viewerInput', { socketId: socket.id, data });
         }
     });
 
-    // Receive game state from a client (authoritative client model)
+    // Relay game state from host to all viewers
     socket.on('gameState', (state) => {
-        lastState = state;
-        socket.broadcast.emit('gameState', state);
+        if (socket.id === hostId) {
+            socket.broadcast.emit('gameState', state);
+        }
     });
+
+    io.emit('playerCount', Object.keys(players).length);
 
     socket.on('disconnect', () => {
         console.log(`Player ${players[socket.id]?.color || 'unknown'} disconnected: ${socket.id}`);
         delete players[socket.id];
-        // Optionally notify clients to reset
+        if (socket.id === hostId) {
+            // Host left, pick a new host if any players remain
+            const ids = Object.keys(players);
+            hostId = ids.length > 0 ? ids[0] : null;
+            io.emit('hostId', hostId);
+            console.log(`Host changed to: ${hostId}`);
+        }
         io.emit('playerDisconnected');
+        io.emit('playerCount', Object.keys(players).length);
     });
 });
 

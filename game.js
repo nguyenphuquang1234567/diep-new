@@ -535,51 +535,200 @@ class Bullet {
     }
 }
 
-// Input handling
-const keys = {};
+// --- Multiplayer Setup ---
+let socket = null;
+let myColor = null;
+let remoteInputs = { red: {}, blue: {} };
+let isHost = false;
+let hostId = null;
+let mySocketId = null;
+let latestGameState = null;
+let playerCount = 1;
+let waitingForPlayer = true;
 
-document.addEventListener('keydown', (e) => {
-    keys[e.key.toLowerCase()] = true;
-    if (!gameRunning && gameOverMessage && player1Lives > 0 && player2Lives > 0) {
-        startCountdown();
-        gameOverMessage = ''; // Clear message only when countdown starts
+if (typeof io !== 'undefined') {
+    socket = io();
+    socket.on('playerColor', (color) => {
+        myColor = color;
+        console.log('Assigned color:', color);
+    });
+    socket.on('hostId', (id) => {
+        hostId = id;
+        isHost = (socket.id === hostId);
+        console.log('Received hostId:', hostId, 'Am I host?', isHost);
+        maybeStartGame();
+    });
+    socket.on('playerCount', (count) => {
+        playerCount = count;
+        waitingForPlayer = (count < 2);
+        maybeStartGame();
+    });
+    socket.on('connect', () => {
+        mySocketId = socket.id;
+        console.log('Connected with socket id:', mySocketId);
+    });
+    socket.on('playerDisconnected', () => {
+        alert('A player disconnected. Reloading...');
+        location.reload();
+    });
+    // Viewers receive game state from host
+    socket.on('gameState', (state) => {
+        latestGameState = state;
+    });
+    // Host receives input from viewers
+    socket.on('viewerInput', (payload) => {
+        if (!isHost) return;
+        const { color, input } = payload.data;
+        remoteInputs[color] = input;
+    });
+}
+
+function maybeStartGame() {
+    if (playerCount === 2 && hostId && myColor) {
+        if (!window._gameStarted) {
+            window._gameStarted = true;
+            if (isHost) {
+                console.log('I am the host, calling initTanks and gameLoop');
+                initTanks();
+                gameLoop();
+            } else {
+                console.log('I am a viewer, calling gameLoop');
+                gameLoop();
+            }
+        }
+    }
+}
+
+// Track local input state
+const localInput = {
+    up: false, down: false, left: false, right: false,
+    aimLeft: false, aimRight: false, shoot: false
+};
+
+// Map keys to input fields for both players
+const keyMap = {
+    red:    { up: 'w', down: 's', left: 'a', right: 'd', aimLeft: 'q', aimRight: 'e', shoot: ' ' },
+    blue:   { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', aimLeft: 'shift', aimRight: '.', shoot: 'enter' }
+};
+
+// Listen for keydown/keyup and update localInput
+window.addEventListener('keydown', (e) => {
+    if (!myColor) return;
+    const mapping = keyMap[myColor];
+    for (const action in mapping) {
+        if (e.key.toLowerCase() === mapping[action]) localInput[action] = true;
+    }
+});
+window.addEventListener('keyup', (e) => {
+    if (!myColor) return;
+    const mapping = keyMap[myColor];
+    for (const action in mapping) {
+        if (e.key.toLowerCase() === mapping[action]) localInput[action] = false;
     }
 });
 
-document.addEventListener('keyup', (e) => {
-    keys[e.key.toLowerCase()] = false;
-});
+// Send local input to server (with color)
+function sendInput() {
+    if (socket && myColor) {
+        if (isHost) return; // Host does not send input to itself
+        socket.emit('playerInput', { color: myColor, input: { ...localInput } });
+    }
+}
+setInterval(sendInput, 1000/30); // 30 times per second
 
-// Initialize tanks
+// Receive remote input from server (by color)
+if (socket) {
+    socket.on('playerInput', (data) => {
+        remoteInputs[data.color] = data.input;
+    });
+}
+
+// Patch initTanks to use multiplayer controls
+function getMultiplayerControls(color) {
+    if (color === myColor) {
+        // Local player controls
+        return {
+            up:   () => localInput.up,
+            down: () => localInput.down,
+            left: () => localInput.left,
+            right: () => localInput.right,
+            aimLeft: () => localInput.aimLeft,
+            aimRight: () => localInput.aimRight,
+            shoot: () => localInput.shoot
+        };
+    } else {
+        // Remote player controls
+        return {
+            up:   () => remoteInputs[color]?.up,
+            down: () => remoteInputs[color]?.down,
+            left: () => remoteInputs[color]?.left,
+            right: () => remoteInputs[color]?.right,
+            aimLeft: () => remoteInputs[color]?.aimLeft,
+            aimRight: () => remoteInputs[color]?.aimRight,
+            shoot: () => remoteInputs[color]?.shoot
+        };
+    }
+}
+
+// Override initTanks for multiplayer
 function initTanks() {
+    console.log('initTanks called');
     tanks = [
-        new Tank(canvas.width * 0.25, canvas.height * 0.5, '#e74c3c', {
-            up: () => keys['w'],
-            down: () => keys['s'],
-            left: () => keys['a'],
-            right: () => keys['d'],
-            aimLeft: () => keys['q'],
-            aimRight: () => keys['e'],
-            shoot: () => keys[' ']
-        }),
-        new Tank(canvas.width * 0.75, canvas.height * 0.5, '#3498db', {
-            up: () => keys['arrowup'],
-            down: () => keys['arrowdown'],
-            left: () => keys['arrowleft'],
-            right: () => keys['arrowright'],
-            aimLeft: () => keys['shift'],
-            aimRight: () => keys['.'],
-            shoot: () => keys['enter']
-        })
+        new Tank(canvas.width * 0.25, canvas.height * 0.5, '#e74c3c', getMultiplayerControls('red')),
+        new Tank(canvas.width * 0.75, canvas.height * 0.5, '#3498db', getMultiplayerControls('blue'))
     ];
-    
-    // Set initial angles to face away from each other
-    tanks[0].angle = Math.PI; // Red tank faces left (away from blue tank)
-    tanks[1].angle = 0; // Blue tank faces right (away from red tank)
+    tanks[0].angle = Math.PI;
+    tanks[1].angle = 0;
+}
+
+// Serialize game state for sending to viewers
+function serializeGameState() {
+    return {
+        tanks: tanks.map(t => ({
+            x: t.x, y: t.y, angle: t.angle, color: t.color, health: t.health, maxHealth: t.maxHealth,
+            speedBoost: t.speedBoost, rapidFire: t.rapidFire, shield: t.shield, multishot: t.multishot,
+            flashTimer: t.flashTimer
+        })),
+        bullets: bullets.map(b => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, color: b.color, damage: b.damage })),
+        powerUps: powerUps.map(p => ({ x: p.x, y: p.y, type: p.type, life: p.life })),
+        meteors: meteors.map(m => ({ x: m.x, y: m.y, speed: m.speed, radius: m.radius, damage: m.damage, active: m.active })),
+        effects: effects.map(e => ({ x: e.x, y: e.y, radius: e.radius, maxRadius: e.maxRadius, alpha: e.alpha, color: e.color, done: e.done })),
+        miniTanks: miniTanks.map(m => ({ x: m.x, y: m.y, angle: m.angle, color: m.color, health: m.health, lifetime: m.lifetime, target: m.target ? (m.target.color) : null })),
+        player1Lives, player2Lives, roundNumber, gameRunning, gameOverMessage, gameOverTimer, countdownActive, countdownValue, countdownTimer
+    };
+}
+
+// Deserialize game state for viewers
+function applyGameState(state) {
+    // Only update if state is present
+    if (!state) return;
+    // Tanks
+    tanks = state.tanks.map(t => Object.assign(new Tank(t.x, t.y, t.color, getMultiplayerControls(t.color)), t));
+    // Bullets
+    bullets = state.bullets.map(b => Object.assign(new Bullet(b.x, b.y, b.vx, b.vy, b.color, b.damage), b));
+    // PowerUps
+    powerUps = state.powerUps.map(p => Object.assign(new PowerUp(p.x, p.y, p.type), p));
+    // Meteors
+    meteors = state.meteors.map(m => Object.assign(new Meteor(m.x, m.y, m.speed, m.radius, m.damage), m));
+    // Effects
+    effects = state.effects.map(e => Object.assign(new BoomEffect(e.x, e.y, e.color), e));
+    // MiniTanks
+    miniTanks = state.miniTanks.map(m => Object.assign(new MiniTank({ x: m.x, y: m.y, color: m.color }, { color: m.target }), m));
+    // Other state
+    player1Lives = state.player1Lives;
+    player2Lives = state.player2Lives;
+    roundNumber = state.roundNumber;
+    gameRunning = state.gameRunning;
+    gameOverMessage = state.gameOverMessage;
+    gameOverTimer = state.gameOverTimer;
+    countdownActive = state.countdownActive;
+    countdownValue = state.countdownValue;
+    countdownTimer = state.countdownTimer;
 }
 
 // Update game state
 function update() {
+    if (!isHost) return; // Only host runs game logic
     // Spawn power-ups randomly
     if (Math.random() < 0.015 && powerUps.length < 5) { // 1.5% chance per frame, max 5 power-ups
         const types = ['speed', 'rapid', 'shield', 'multishot', 'minitank'];
@@ -790,10 +939,16 @@ function update() {
     }
     // Only remove MiniTanks with health <= 0 or expired
     miniTanks = miniTanks.filter(miniTank => !miniTank.isExpired());
+
+    // At the end of update, host sends state to server
+    if (isHost && socket) {
+        socket.emit('gameState', serializeGameState());
+    }
 }
 
 // Draw everything
 function draw() {
+    //console.log('draw called');
     // Clear canvas
     ctx.fillStyle = '#27ae60';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -899,18 +1054,36 @@ function draw() {
 
     // Draw MiniTanks
     miniTanks.forEach(miniTank => miniTank.draw());
+
+    // Show waiting overlay if not enough players
+    if (waitingForPlayer) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 48px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Waiting for another player...', canvas.width / 2, canvas.height / 2);
+        ctx.restore();
+    }
 }
 
 // Game loop
 function gameLoop() {
-    if (gameRunning) {
-        update();
-    } else if (countdownActive) {
-        // During countdown, only update countdown and draw
-        updateCountdown();
+    //console.log('gameLoop called, isHost:', isHost);
+    if (isHost) {
+        if (gameRunning) {
+            update();
+        } else if (countdownActive) {
+            updateCountdown();
+        }
+        draw();
+        requestAnimationFrame(gameLoop);
+    } else {
+        applyGameState(latestGameState);
+        draw();
+        requestAnimationFrame(gameLoop);
     }
-    draw();
-    requestAnimationFrame(gameLoop);
 }
 
 // Reset round (keep lives, reset tanks)
@@ -1146,8 +1319,4 @@ window.addEventListener('mousedown', () => {
     if (audioCtx && audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
-});
-
-// Start the game
-initTanks();
-gameLoop(); 
+}); 
