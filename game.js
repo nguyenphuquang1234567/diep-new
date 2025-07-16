@@ -132,7 +132,7 @@ class Tank {
         // Health regeneration
         this.healthRegenTimer++;
         if (this.healthRegenTimer >= this.healthRegenCooldown && this.health < this.maxHealth) {
-            this.health = Math.min(this.maxHealth, this.health + 20); // Regenerate 20 health
+            this.health = Math.min(this.maxHealth, this.health + 2); // Regenerate 2 health
             this.healthRegenTimer = 0;
         }
         
@@ -1136,6 +1136,12 @@ function gameLoop() {
         requestAnimationFrame(gameLoop);
     } else {
         applyGameState(latestGameState);
+
+        // Client-side prediction for blue player
+        if (gameRunning && myColor === 'blue' && tanks && tanks.length > 1) {
+            tanks[1].update(); // Only update blue tank with local input
+        }
+
         draw();
         requestAnimationFrame(gameLoop);
     }
