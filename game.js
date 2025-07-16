@@ -617,8 +617,8 @@ const localInput = {
 
 // Map keys to input fields for both players
 const keyMap = {
-    red:    { up: 'w', down: 's', left: 'a', right: 'd', aimLeft: 'q', aimRight: 'e', shoot: ' ' },
-    blue:   { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', aimLeft: 'shift', aimRight: '.', shoot: 'enter' }
+    red:    { up: 'w', down: 's', left: 'a', right: 'd', aimLeft: 'arrowleft', aimRight: 'arrowright', shoot: ' ' },
+    blue:   { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', aimLeft: 'q', aimRight: 'w', shoot: 'enter' }
 };
 
 // Listen for keydown/keyup and update localInput
