@@ -599,6 +599,16 @@ function maybeStartGame() {
     }
 }
 
+// Only the host should handle 'press any key to continue' to reset/start next round
+if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', (e) => {
+        if (isHost && !gameRunning && gameOverMessage && playerCount === 2) {
+            startCountdown();
+            gameOverMessage = '';
+        }
+    });
+}
+
 // Track local input state
 const localInput = {
     up: false, down: false, left: false, right: false,
