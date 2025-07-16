@@ -644,7 +644,7 @@ function sendInput() {
         socket.emit('playerInput', { color: myColor, input: { ...localInput } });
     }
 }
-setInterval(sendInput, 1000/30); // 30 times per second
+setInterval(sendInput, 1000/60); // 60 times per second
 
 // Receive remote input from server (by color)
 if (socket) {
@@ -1110,20 +1110,20 @@ function draw() {
         // Interpolate tanks for smooth movement
         tanks.forEach(tank => {
             if (typeof tank.targetX === 'number' && typeof tank.targetY === 'number') {
-                tank.x = lerp(tank.x, tank.targetX, 0.15); // Set to 0.15 for smoother correction
-                tank.y = lerp(tank.y, tank.targetY, 0.15);
+                tank.x = lerp(tank.x, tank.targetX, 0.2); // Set to 0.2 for balance
+                tank.y = lerp(tank.y, tank.targetY, 0.2);
             }
             if (typeof tank.targetAngle === 'number') {
                 let da = tank.targetAngle - tank.angle;
                 while (da > Math.PI) da -= 2 * Math.PI;
                 while (da < -Math.PI) da += 2 * Math.PI;
-                tank.angle = tank.angle + da * 0.15; // Set to 0.15 for smoother correction
+                tank.angle = tank.angle + da * 0.2; // Set to 0.2 for balance
             }
         });
     }
 }
 
-// Game loop
+// Game loop runs at ~60Hz via requestAnimationFrame
 function gameLoop() {
     //console.log('gameLoop called, isHost:', isHost);
     if (isHost) {
