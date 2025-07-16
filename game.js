@@ -1110,14 +1110,14 @@ function draw() {
         // Interpolate tanks for smooth movement
         tanks.forEach(tank => {
             if (typeof tank.targetX === 'number' && typeof tank.targetY === 'number') {
-                tank.x = lerp(tank.x, tank.targetX, 0.2);
-                tank.y = lerp(tank.y, tank.targetY, 0.2);
+                tank.x = lerp(tank.x, tank.targetX, 0.4); // Increased from 0.2 to 0.4
+                tank.y = lerp(tank.y, tank.targetY, 0.4);
             }
             if (typeof tank.targetAngle === 'number') {
                 let da = tank.targetAngle - tank.angle;
                 while (da > Math.PI) da -= 2 * Math.PI;
                 while (da < -Math.PI) da += 2 * Math.PI;
-                tank.angle = tank.angle + da * 0.2;
+                tank.angle = tank.angle + da * 0.4; // Increased from 0.2 to 0.4
             }
         });
     }
