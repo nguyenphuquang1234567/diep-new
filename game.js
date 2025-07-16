@@ -789,7 +789,7 @@ function update() {
         }
     }
     // Only remove MiniTanks with health <= 0 or expired
-    miniTanks = miniTanks.filter(miniTank => miniTank.health > 0 && !miniTank.isExpired());
+    miniTanks = miniTanks.filter(miniTank => !miniTank.isExpired());
 }
 
 // Draw everything
@@ -1085,7 +1085,7 @@ class MiniTank {
     }
 
     isExpired() {
-        return this.lifetime <= 0 || this.owner.health <= 0;
+        return this.health <= 0;
     }
 }
 
