@@ -1108,16 +1108,19 @@ function draw() {
 
     if (!isHost) {
         // Interpolate tanks for smooth movement
+        const threshold = 2; // pixels
         tanks.forEach(tank => {
             if (typeof tank.targetX === 'number' && typeof tank.targetY === 'number') {
-                tank.x = lerp(tank.x, tank.targetX, 0.2); // Set to 0.2 for balance
-                tank.y = lerp(tank.y, tank.targetY, 0.2);
+                if (Math.abs(tank.x - tank.targetX) > threshold || Math.abs(tank.y - tank.targetY) > threshold) {
+                    tank.x = lerp(tank.x, tank.targetX, 0.2);
+                    tank.y = lerp(tank.y, tank.targetY, 0.2);
+                }
             }
             if (typeof tank.targetAngle === 'number') {
                 let da = tank.targetAngle - tank.angle;
                 while (da > Math.PI) da -= 2 * Math.PI;
                 while (da < -Math.PI) da += 2 * Math.PI;
-                tank.angle = tank.angle + da * 0.2; // Set to 0.2 for balance
+                tank.angle = tank.angle + da * 0.2;
             }
         });
     }
