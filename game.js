@@ -1140,9 +1140,13 @@ function gameLoop() {
     } else {
         applyGameState(latestGameState);
 
-        // Client-side prediction for blue player
-        if (gameRunning && myColor === 'blue' && tanks && tanks.length > 1) {
-            tanks[1].update(); // Only update blue tank with local input
+        // Client-side prediction for both players
+        if (gameRunning && tanks && tanks.length > 1) {
+            if (myColor === 'red') {
+                tanks[0].update(); // Red tank (host or viewer)
+            } else if (myColor === 'blue') {
+                tanks[1].update(); // Blue tank (host or viewer)
+            }
         }
 
         draw();
