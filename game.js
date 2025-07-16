@@ -869,11 +869,6 @@ function draw() {
     
 
     
-    // Debug: Show pressed keys
-    ctx.fillStyle = '#fff';
-    ctx.font = '16px Arial';
-    ctx.fillText('Debug - Pressed keys: ' + Object.keys(keys).filter(k => keys[k]).join(', '), 10, 120);
-    
     // Draw game over message
     if (gameOverMessage) { // Always draw if gameOverMessage is set
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
