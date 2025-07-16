@@ -708,12 +708,41 @@ function serializeGameState() {
     };
 }
 
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
+
 // Deserialize game state for viewers
 function applyGameState(state) {
     // Only update if state is present
     if (!state) return;
     // Tanks
-    tanks = state.tanks.map(t => Object.assign(new Tank(t.x, t.y, t.color, getMultiplayerControls(t.color)), t));
+    if (!tanks || tanks.length !== state.tanks.length) {
+        // First time or tank count changed: create tanks at correct positions
+        tanks = state.tanks.map(t => {
+            const tank = new Tank(t.x, t.y, t.color, getMultiplayerControls(t.color));
+            tank.targetX = t.x;
+            tank.targetY = t.y;
+            tank.targetAngle = t.angle;
+            return Object.assign(tank, t);
+        });
+    } else {
+        // Update targets for interpolation
+        state.tanks.forEach((t, i) => {
+            tanks[i].targetX = t.x;
+            tanks[i].targetY = t.y;
+            tanks[i].targetAngle = t.angle;
+            // Update other properties as needed
+            tanks[i].health = t.health;
+            tanks[i].maxHealth = t.maxHealth;
+            tanks[i].color = t.color;
+            tanks[i].speedBoost = t.speedBoost;
+            tanks[i].rapidFire = t.rapidFire;
+            tanks[i].shield = t.shield;
+            tanks[i].multishot = t.multishot;
+            tanks[i].flashTimer = t.flashTimer;
+        });
+    }
     // Bullets
     bullets = state.bullets.map(b => Object.assign(new Bullet(b.x, b.y, b.vx, b.vy, b.color, b.damage), b));
     // PowerUps
@@ -1075,6 +1104,22 @@ function draw() {
         ctx.textAlign = 'center';
         ctx.fillText('Waiting for another player...', canvas.width / 2, canvas.height / 2);
         ctx.restore();
+    }
+
+    if (!isHost) {
+        // Interpolate tanks for smooth movement
+        tanks.forEach(tank => {
+            if (typeof tank.targetX === 'number' && typeof tank.targetY === 'number') {
+                tank.x = lerp(tank.x, tank.targetX, 0.2);
+                tank.y = lerp(tank.y, tank.targetY, 0.2);
+            }
+            if (typeof tank.targetAngle === 'number') {
+                let da = tank.targetAngle - tank.angle;
+                while (da > Math.PI) da -= 2 * Math.PI;
+                while (da < -Math.PI) da += 2 * Math.PI;
+                tank.angle = tank.angle + da * 0.2;
+            }
+        });
     }
 }
 
