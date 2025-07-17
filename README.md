@@ -1,6 +1,6 @@
 # 🚗 Tank Battle Game
 
-A simple 2-player tank battle game inspired by diep.io, built with HTML5 Canvas and JavaScript.
+A real-time 2-player tank battle game inspired by diep.io, built with HTML5 Canvas and JavaScript. Optimized for low latency with WebSocket transport and compression.
 
 ## 🎮 How to Play
 
@@ -27,13 +27,74 @@ A simple 2-player tank battle game inspired by diep.io, built with HTML5 Canvas 
 
 ## 🚀 Features
 
-- **Real-time 2-player combat** on one keyboard
+- **Real-time 2-player combat** with low latency optimizations
+- **WebSocket-only transport** for minimal delay
+- **Compression** for faster data transfer
 - **Health bars** that change color based on remaining health
 - **Smooth tank movement** and rotation
 - **Bullet physics** with glow effects
 - **Collision detection** between bullets and tanks
 - **Grid background** for better visual reference
 - **Game over screen** with winner announcement
+
+## 🛠️ Technical Details
+
+- Built with vanilla JavaScript and HTML5 Canvas
+- Express.js server with Socket.IO for real-time communication
+- Compression middleware for optimized data transfer
+- Connection pooling for better performance
+- TCP optimizations for low latency
+
+## 🚀 Deployment
+
+### Local Development
+
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Start the server:
+   ```bash
+   npm start
+   ```
+
+3. Open http://localhost:3000 in your browser
+
+### Deploy to Render
+
+1. **Fork/Clone this repository** to your GitHub account
+
+2. **Sign up/Login to Render** at https://render.com
+
+3. **Create a new Web Service**:
+   - Click "New +" → "Web Service"
+   - Connect your GitHub repository
+   - Select the repository: `your-username/diep-new`
+
+4. **Configure the service**:
+   - **Name**: `tank-battle-game` (or any name you prefer)
+   - **Environment**: `Node`
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm start`
+   - **Plan**: Free (or choose a paid plan for better performance)
+
+5. **Environment Variables** (optional):
+   - `NODE_ENV`: `production`
+
+6. **Click "Create Web Service"**
+
+7. **Wait for deployment** - Render will automatically build and deploy your app
+
+8. **Access your game** at the provided URL (e.g., `https://your-app-name.onrender.com`)
+
+### Deployment Features
+
+- **Automatic HTTPS** - Render provides SSL certificates
+- **Global CDN** - Fast loading worldwide
+- **Auto-deploy** - Updates automatically when you push to GitHub
+- **Custom domains** - Add your own domain (paid plans)
+- **Logs and monitoring** - Built-in logging and performance monitoring
 
 ## 🎯 Game Mechanics
 
@@ -43,14 +104,6 @@ A simple 2-player tank battle game inspired by diep.io, built with HTML5 Canvas 
 - **Health System**: Visual health bars show remaining health
 - **Win Condition**: Last tank standing wins
 
-## 🛠️ Technical Details
-
-- Built with vanilla JavaScript and HTML5 Canvas
-- No external dependencies required
-- Responsive design with modern CSS
-- Smooth 60fps game loop
-- Efficient collision detection
-
 ## 🎨 Visual Features
 
 - **Color-coded tanks**: Red vs Blue
@@ -59,21 +112,20 @@ A simple 2-player tank battle game inspired by diep.io, built with HTML5 Canvas 
 - **Grid background**: Helps with spatial awareness
 - **Smooth animations**: Fluid movement and rotation
 
-## 🚀 Getting Started
-
-1. Open `index.html` in a modern web browser
-2. Two players can play on the same keyboard
-3. Use the controls above to battle it out!
-4. The game automatically resets when a tank is destroyed
-
 ## 🔧 Future Enhancements
 
 - Power-ups and special abilities
 - Different tank types with unique abilities
 - Obstacles and cover mechanics
 - Sound effects and music
-- Online multiplayer support
 - Mobile touch controls
 - Multiple game modes
+- WebRTC for peer-to-peer connections
+
+## 📝 License
+
+MIT License - feel free to use and modify!
+
+---
 
 Enjoy the battle! 🎮 

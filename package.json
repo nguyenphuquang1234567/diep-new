@@ -1,7 +1,21 @@
 {
+  "name": "tank-battle-game",
+  "version": "1.0.0",
+  "description": "A real-time 2-player tank battle game with low latency optimizations",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
   "dependencies": {
     "compression": "^1.8.0",
     "express": "^5.1.0",
     "socket.io": "^4.8.1"
-  }
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": ["game", "tank", "multiplayer", "real-time", "socket.io"],
+  "author": "Your Name",
+  "license": "MIT"
 }

@@ -139,8 +139,10 @@ server.on('connection', (socket) => {
     socket.setKeepAlive(true, 1000);
 });
 
-server.listen(3000, () => {
-    console.log('Tank game server running on http://localhost:3000');
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, () => {
+    console.log(`Tank game server running on port ${PORT}`);
     console.log('Optimized for low latency (target: 10ms)');
     console.log('Features: WebSocket-only, compression, delta updates, prediction');
 }); 
