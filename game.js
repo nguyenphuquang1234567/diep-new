@@ -41,6 +41,28 @@ let effects = [];
 // Add global miniTanks array
 let miniTanks = [];
 
+// Network optimization variables
+let lastInputTime = 0;
+let inputBuffer = [];
+let predictionBuffer = [];
+let lastServerTime = 0;
+let latency = 0;
+let frameTime = 160.67; // Target 60
+let lastFrameTime = performance.now();
+
+// Optimize for low latency
+const INPUT_SEND_RATE = 120; // 120 times per second
+const STATE_SEND_RATE = 60; // 60 times per second
+const PREDICTION_STEPS = 3; // Predict 3 steps ahead
+
+// Simple interpolation helper
+function lerpAngle(a, b, t) {
+    let da = b - a;
+    while (da > Math.PI) da -= 2 * Math.PI;
+    while (da < -Math.PI) da += 2 * Math.PI;
+    return a + da * t;
+}
+
 // Boom effect class
 class BoomEffect {
     constructor(x, y, color) {
@@ -103,6 +125,12 @@ class Tank {
         this.healthRegenTimer = 0;
         this.healthRegenCooldown = 240; // Regenerate every 4 seconds
         this.flashTimer = 0;
+        
+        // Client-side prediction
+        this.predictedX = x;
+        this.predictedY = y;
+        this.predictedAngle = 0;
+        this.lastUpdateTime = 0;
     }
 
     update() {
@@ -153,6 +181,11 @@ class Tank {
         // Auto-shoot
         this.autoShoot();
         if (this.flashTimer > 0) this.flashTimer--;
+        
+        // Update prediction
+        this.predictedX = this.x;
+        this.predictedY = this.y;
+        this.predictedAngle = this.angle;
     }
 
     shoot() {
@@ -547,7 +580,9 @@ let playerCount = 1;
 let waitingForPlayer = true;
 
 if (typeof io !== 'undefined') {
-    socket = io();
+    socket = io({
+        transports: ['websocket']
+    });
     socket.on('playerColor', (color) => {
         myColor = color;
         console.log('Assigned color:', color);
@@ -573,7 +608,14 @@ if (typeof io !== 'undefined') {
     });
     // Viewers receive game state from host
     socket.on('gameState', (state) => {
+        console.log('Viewer received game state:', state);
         latestGameState = state;
+        
+        // Initialize tanks if this is the first state received
+        if (!tanks || tanks.length === 0) {
+            console.log('Initializing tanks for viewer');
+            initTanks();
+        }
     });
     // Host receives input from viewers
     socket.on('viewerInput', (payload) => {
@@ -637,14 +679,36 @@ window.addEventListener('keyup', (e) => {
     }
 });
 
-// Send local input to server (with color)
+// Optimized input sending for low latency
 function sendInput() {
-    if (socket && myColor) {
-        if (isHost) return; // Host does not send input to itself
-        socket.emit('playerInput', { color: myColor, input: { ...localInput } });
+    if (socket && myColor && !isHost) {
+        const now = performance.now();
+        if (now - lastInputTime >= (1000 / INPUT_SEND_RATE)) {
+            // Compress input data
+            const compressedInput = {
+                color: myColor,
+                input: {
+                    up: localInput.up ? 1 : 0,
+                    down: localInput.down ? 1 : 0,
+                    left: localInput.left ? 1 : 0,
+                    right: localInput.right ? 1 : 0,
+                    aimLeft: localInput.aimLeft ? 1 : 0,
+                    aimRight: localInput.aimRight ? 1 : 0,
+                    shoot: localInput.shoot ? 1 : 0,
+                    timestamp: now
+                }
+            };
+            socket.emit('playerInput', compressedInput);
+            lastInputTime = now;
+        }
     }
 }
-setInterval(sendInput, 1000/120); // 120 times per second
+// Use requestAnimationFrame for more precise timing
+function inputLoop() {
+    sendInput();
+    requestAnimationFrame(inputLoop);
+}
+inputLoop();
 
 // Receive remote input from server (by color)
 if (socket) {
@@ -716,8 +780,35 @@ function lerp(a, b, t) {
 function applyGameState(state) {
     // Only update if state is present
     if (!state) return;
+    
+    // Handle delta format (new)
+    if (state.full !== undefined) {
+        if (state.full) {
+            // Full state update
+            applyFullState(state.state);
+        } else {
+            // Partial state update
+            applyDeltaState(state.changes);
+        }
+        return;
+    }
+    
+    // Handle old format (backward compatibility)
+    applyFullState(state);
+}
+
+function applyFullState(state) {
+    console.log('applyFullState called with:', state);
+    if (!state || !state.tanks) {
+        console.log('applyFullState: No state or tanks, returning');
+        return;
+    }
+    
+    console.log('applyFullState: Processing tanks, current tanks:', tanks);
+    
     // Tanks
     if (!tanks || tanks.length !== state.tanks.length) {
+        console.log('applyFullState: Creating new tanks');
         // First time or tank count changed: create tanks at correct positions
         tanks = state.tanks.map(t => {
             const tank = new Tank(t.x, t.y, t.color, getMultiplayerControls(t.color));
@@ -726,43 +817,96 @@ function applyGameState(state) {
             tank.targetAngle = t.angle;
             return Object.assign(tank, t);
         });
+        console.log('applyFullState: Created tanks:', tanks);
     } else {
+        console.log('applyFullState: Updating existing tanks');
         // Update targets for interpolation
         state.tanks.forEach((t, i) => {
-            tanks[i].targetX = t.x;
-            tanks[i].targetY = t.y;
-            tanks[i].targetAngle = t.angle;
-            // Update other properties as needed
-            tanks[i].health = t.health;
-            tanks[i].maxHealth = t.maxHealth;
-            tanks[i].color = t.color;
-            tanks[i].speedBoost = t.speedBoost;
-            tanks[i].rapidFire = t.rapidFire;
-            tanks[i].shield = t.shield;
-            tanks[i].multishot = t.multishot;
-            tanks[i].flashTimer = t.flashTimer;
+            if (tanks[i]) {
+                tanks[i].targetX = t.x;
+                tanks[i].targetY = t.y;
+                tanks[i].targetAngle = t.angle;
+                // Update other properties as needed
+                tanks[i].health = t.health;
+                tanks[i].maxHealth = t.maxHealth;
+                tanks[i].color = t.color;
+                tanks[i].speedBoost = t.speedBoost;
+                tanks[i].rapidFire = t.rapidFire;
+                tanks[i].shield = t.shield;
+                tanks[i].multishot = t.multishot;
+                tanks[i].flashTimer = t.flashTimer;
+            }
         });
     }
+    
     // Bullets
-    bullets = state.bullets.map(b => Object.assign(new Bullet(b.x, b.y, b.vx, b.vy, b.color, b.damage), b));
+    if (state.bullets) {
+        bullets = state.bullets.map(b => Object.assign(new Bullet(b.x, b.y, b.vx, b.vy, b.color, b.damage), b));
+    }
+    
     // PowerUps
-    powerUps = state.powerUps.map(p => Object.assign(new PowerUp(p.x, p.y, p.type), p));
+    if (state.powerUps) {
+        powerUps = state.powerUps.map(p => Object.assign(new PowerUp(p.x, p.y, p.type), p));
+    }
+    
     // Meteors
-    meteors = state.meteors.map(m => Object.assign(new Meteor(m.x, m.y, m.speed, m.radius, m.damage), m));
+    if (state.meteors) {
+        meteors = state.meteors.map(m => Object.assign(new Meteor(m.x, m.y, m.speed, m.radius, m.damage), m));
+    }
+    
     // Effects
-    effects = state.effects.map(e => Object.assign(new BoomEffect(e.x, e.y, e.color), e));
+    if (state.effects) {
+        effects = state.effects.map(e => Object.assign(new BoomEffect(e.x, e.y, e.color), e));
+    }
+    
     // MiniTanks
-    miniTanks = state.miniTanks.map(m => Object.assign(new MiniTank({ x: m.x, y: m.y, color: m.color }, { color: m.target }), m));
+    if (state.miniTanks) {
+        miniTanks = state.miniTanks.map(m => Object.assign(new MiniTank({ x: m.x, y: m.y, color: m.color }, m.target ? { color: m.target } : null), m));
+    }
+    
     // Other state
-    player1Lives = state.player1Lives;
-    player2Lives = state.player2Lives;
-    roundNumber = state.roundNumber;
-    gameRunning = state.gameRunning;
-    gameOverMessage = state.gameOverMessage;
-    gameOverTimer = state.gameOverTimer;
-    countdownActive = state.countdownActive;
-    countdownValue = state.countdownValue;
-    countdownTimer = state.countdownTimer;
+    if (state.player1Lives !== undefined) player1Lives = state.player1Lives;
+    if (state.player2Lives !== undefined) player2Lives = state.player2Lives;
+    if (state.roundNumber !== undefined) roundNumber = state.roundNumber;
+    if (state.gameRunning !== undefined) gameRunning = state.gameRunning;
+    if (state.gameOverMessage !== undefined) gameOverMessage = state.gameOverMessage;
+    if (state.gameOverTimer !== undefined) gameOverTimer = state.gameOverTimer;
+    if (state.countdownActive !== undefined) countdownActive = state.countdownActive;
+    if (state.countdownValue !== undefined) countdownValue = state.countdownValue;
+    if (state.countdownTimer !== undefined) countdownTimer = state.countdownTimer;
+}
+
+function applyDeltaState(changes) {
+    if (!changes) return;
+    
+    // Apply tank changes
+    Object.keys(changes).forEach(key => {
+        if (key.startsWith('tank_')) {
+            const index = parseInt(key.split('_')[1]);
+            const tankChanges = changes[key];
+            
+            if (tanks && tanks[index]) {
+                if (tankChanges.x !== undefined) tanks[index].targetX = tankChanges.x;
+                if (tankChanges.y !== undefined) tanks[index].targetY = tankChanges.y;
+                if (tankChanges.angle !== undefined) tanks[index].targetAngle = tankChanges.angle;
+                if (tankChanges.health !== undefined) tanks[index].health = tankChanges.health;
+                if (tankChanges.speedBoost !== undefined) tanks[index].speedBoost = tankChanges.speedBoost;
+                if (tankChanges.rapidFire !== undefined) tanks[index].rapidFire = tankChanges.rapidFire;
+                if (tankChanges.shield !== undefined) tanks[index].shield = tankChanges.shield;
+                if (tankChanges.multishot !== undefined) tanks[index].multishot = tankChanges.multishot;
+            }
+        }
+    });
+    
+    // Apply bullet changes
+    if (changes.bullets) {
+        bullets = changes.bullets.map(b => Object.assign(new Bullet(b.x, b.y, b.vx, b.vy, b.color, b.damage), b));
+    }
+    
+    // Apply other changes
+    if (changes.player1Lives !== undefined) player1Lives = changes.player1Lives;
+    if (changes.player2Lives !== undefined) player2Lives = changes.player2Lives;
+    if (changes.gameRunning !== undefined) gameRunning = changes.gameRunning;
 }
 
 // Update game state
@@ -777,7 +921,7 @@ function update() {
         powerUps.push(new PowerUp(x, y, type));
     }
     
-    // Update power-ups
+        // Update power-ups
     powerUps = powerUps.filter(powerUp => powerUp.update());
     
     // Update tanks
@@ -1138,7 +1282,12 @@ function gameLoop() {
         draw();
         requestAnimationFrame(gameLoop);
     } else {
-        applyGameState(latestGameState);
+        console.log("Viewer gameLoop - latestGameState:", latestGameState, "tanks:", tanks);
+        
+        // Simple state application with basic smoothing
+        if (latestGameState) {
+            applyGameState(latestGameState);
+        }
 
         // Client-side prediction for both players
         if (gameRunning && tanks && tanks.length > 1) {
@@ -1388,3 +1537,100 @@ window.addEventListener('mousedown', () => {
         audioCtx.resume();
     }
 }); 
+
+// Simple interpolation helper
+function lerpAngle(a, b, t) {
+    let da = b - a;
+    while (da > Math.PI) da -= 2 * Math.PI;
+    while (da < -Math.PI) da += 2 * Math.PI;
+    return a + da * t;
+} 
+
+// Binary state serialization for minimal network overhead
+function serializeGameStateBinary() {
+    // Calculate buffer size needed
+    const tankSize =4 +44+ 21 + 1; // x,y,angle,health,powerups
+    const bulletSize = 44 +4 +4 + 1; // x,y,vx,vy,color
+    const bufferSize = tanks.length * tankSize + bullets.length * bulletSize + 20; // header + data
+    
+    const buffer = new ArrayBuffer(bufferSize);
+    const view = new DataView(buffer);
+    let offset = 0;
+    
+    // Write header (4 bytes)
+    view.setUint32(offset, 0x12345678); // Magic number
+    offset += 4;
+    
+    // Write tank count and bullet count (2 bytes each)
+    view.setUint16(offset, tanks.length);
+    offset += 2;
+    view.setUint16(offset, bullets.length);
+    offset += 2;
+    
+    // Write tanks
+    tanks.forEach(tank => {
+        view.setFloat32(offset, tank.x, true); offset += 4;
+        view.setFloat32(offset, tank.y, true); offset += 4;
+        view.setFloat32(offset, tank.angle, true); offset += 4;
+        view.setUint16(offset, tank.health, true); offset += 2;
+        view.setUint8(offset++, tank.speedBoost);
+        view.setUint8(offset++, tank.rapidFire);
+        view.setUint8(offset++, tank.shield);
+        view.setUint8(offset++, tank.multishot);
+    });
+    
+    // Write bullets
+    bullets.forEach(bullet => {
+        view.setFloat32(offset, bullet.x, true); offset += 4;
+        view.setFloat32(offset, bullet.y, true); offset += 4;
+        view.setFloat32(offset, bullet.vx, true); offset += 4;
+        view.setFloat32(offset, bullet.vy, true); offset += 4;
+        view.setUint8(offset++, bullet.color === '#e74c3c' ? 1 : 2);
+    });
+    
+    return buffer.slice(0, offset);
+}
+
+function deserializeGameStateBinary(buffer) {
+    const view = new DataView(buffer);
+    let offset = 0;
+    
+    // Read header
+    const magic = view.getUint32(offset, true); offset += 4;
+    if (magic !== 0x12345678) return null; // Invalid data
+    
+    const tankCount = view.getUint16(offset, true); offset += 2;
+    const bulletCount = view.getUint16(offset, true); offset += 2;
+    
+    // Read tanks
+    const tanks = [];
+    for (let i = 0; i < tankCount; i++) {
+        const x = view.getFloat32(offset, true); offset += 4;
+        const y = view.getFloat32(offset, true); offset += 4;
+        const angle = view.getFloat32(offset, true); offset += 4;
+        const health = view.getUint16(offset, true); offset += 2;
+        const speedBoost = view.getUint8(offset++);
+        const rapidFire = view.getUint8(offset++);
+        const shield = view.getUint8(offset++);
+        const multishot = view.getUint8(offset++);
+        
+        tanks.push({ x, y, angle, health, speedBoost, rapidFire, shield, multishot });
+    }
+    
+    // Read bullets
+    const bullets = [];
+    for (let i = 0; i < bulletCount; i++) {
+        const x = view.getFloat32(offset, true); offset += 4;
+        const y = view.getFloat32(offset, true); offset += 4;
+        const vx = view.getFloat32(offset, true); offset += 4;
+        const vy = view.getFloat32(offset, true); offset += 4;
+        const colorIndex = view.getUint8(offset++);
+        const color = colorIndex === 1 ? '#e74c3c' : '#3498db';
+        
+        bullets.push({ x, y, vx, vy, color });
+    }
+    
+    return { tanks, bullets };
+} 
+
+ 
